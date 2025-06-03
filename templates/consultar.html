@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Consulta SQL</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin-top: 30px;
+            margin-bottom: 50px;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 0 12px rgba(0,0,0,0.08);
+        }
+
+        textarea {
+            font-family: monospace;
+        }
+
+        table.table-preview {
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        table th, table td {
+            vertical-align: middle !important;
+            font-size: 0.95rem;
+        }
+
+        table thead {
+            background-color: #0d6efd;
+            color: white;
+        }
+
+        .btn-primary {
+            border-radius: 8px;
+        }
+
+        .alert {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="mb-4 text-primary">Consulta de base de datos SQLite</h2>
+
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary mb-4">← Volver a subir archivos</a>
+
+        {% if tablas %}
+            <h5>🗂️ Tablas disponibles:</h5>
+            <ul>
+            {% for t in tablas %}
+                <li><code>{{ t }}</code></li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+
+        <form method="POST">
+            <div class="mb-3">
+                <label for="consulta_sql" class="form-label"><strong>Consulta SQL personalizada:</strong></label>
+                <textarea class="form-control" name="consulta_sql" rows="6" placeholder="Ej: SELECT * FROM tabla1 JOIN tabla2 ON ..." required>{{ consulta_actual }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Ejecutar Consulta</button>
+        </form>
+
+        {% if resultado is not none %}
+            <div class="mt-5">
+                <h5>Resultado (previsualización de los primeros 10 registros):</h5>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover table-striped table-preview">
+                        <thead>
+                            <tr>
+                                {% for col in resultado.columns %}
+                                    <th>{{ col }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for fila in resultado.values %}
+                                <tr>
+                                    {% for valor in fila %}
+                                        <td>{{ valor }}</td>
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <a href="{{ url_for('descargar') }}" class="btn btn-success mt-3">📥 Descargar último reporte generado</a>
+            </div>
+        {% elif error %}
+            <div class="alert alert-danger mt-4" role="alert">
+                {{ error }}
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Bootstrap JS (opcional si usas interactividad futura) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
