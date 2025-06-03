@@ -4,24 +4,23 @@ import sqlite3
 import pandas as pd
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from datetime import datetime
+import gc
 
 app = Flask(__name__)
 app.secret_key = "clave-secreta"
 
-# Carpetas para archivos
-UPLOAD_FOLDER = 'uploads'
-CLEANED_FOLDER = 'cleaned'
-RESULTADO_FOLDER = 'resultado'
-DB_PATH = 'database.db'
+# Carpetas temporales (para Render u otros entornos que solo permiten escritura en /tmp)
+UPLOAD_FOLDER = '/tmp/uploads'
+CLEANED_FOLDER = '/tmp/cleaned'
+RESULTADO_FOLDER = '/tmp/resultado'
+DB_PATH = '/tmp/database.db'
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(CLEANED_FOLDER, exist_ok=True)
 os.makedirs(RESULTADO_FOLDER, exist_ok=True)
 
-# Variable para guardar la ruta del último reporte generado
 ULTIMO_REPORTE = None
 
-# Función para limpiar texto
 def limpiar_contenido(texto):
     texto = texto.replace(',', '.') \
                  .replace(':', '') \
@@ -32,16 +31,13 @@ def limpiar_contenido(texto):
                  .strip()
     return texto
 
-# Validar nombres de archivos
 NOMBRES_VALIDOS = {'tabla_detaller', 'tabla_pedidos', 'tabla_remision'}
 
-# Generar nombre válido para la tabla
 def nombre_tabla_valido(nombre_archivo):
     base = os.path.splitext(nombre_archivo)[0].lower()
     base = re.sub(r'\W+', '_', base).strip('_')
     return base
 
-# Cargar CSV a SQLite
 def cargar_csv_a_sqlite(nombre_archivo, ruta_csv, conn):
     tabla = nombre_tabla_valido(nombre_archivo)
 
@@ -72,9 +68,12 @@ def cargar_csv_a_sqlite(nombre_archivo, ruta_csv, conn):
     except Exception as e:
         raise Exception(f"{nombre_archivo} no se pudo procesar correctamente: {e}")
 
+    finally:
+        del df
+        gc.collect()
+
     return tabla
 
-# Página 1: Subir y limpiar archivos
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
@@ -83,7 +82,6 @@ def index():
             flash("⚠️ No se seleccionó ningún archivo.")
             return redirect(url_for('index'))
 
-        # Validar nombres de archivos
         nombres_subidos = {os.path.splitext(a.filename)[0].lower() for a in archivos}
         if not NOMBRES_VALIDOS.issubset(nombres_subidos):
             faltantes = NOMBRES_VALIDOS - nombres_subidos
@@ -102,13 +100,12 @@ def index():
             archivo.save(ruta_original)
 
             with open(ruta_original, 'r', encoding='utf-8', errors='ignore') as f:
-                lineas = f.readlines()
-
-            lineas_limpias = []
-            for linea in lineas:
-                linea_limpia = limpiar_contenido(linea)
-                if linea_limpia.strip() != '':
-                    lineas_limpias.append(linea_limpia + '\n')
+                lineas = (linea for linea in f)
+                lineas_limpias = []
+                for linea in lineas:
+                    linea_limpia = limpiar_contenido(linea)
+                    if linea_limpia.strip() != '':
+                        lineas_limpias.append(linea_limpia + '\n')
 
             with open(ruta_limpia_txt, 'w', encoding='utf-8') as f:
                 f.writelines(lineas_limpias)
@@ -118,6 +115,9 @@ def index():
                 num_cols = df.shape[1]
                 df.columns = [f"col_{i+1}" for i in range(num_cols)]
                 df.to_csv(ruta_final_csv, sep=',', index=False)
+                del df
+                gc.collect()
+
                 cargar_csv_a_sqlite(nombre, ruta_final_csv, conn)
             except Exception as e:
                 flash(f"Error cargando {nombre}: {e}")
@@ -127,9 +127,6 @@ def index():
         return redirect(url_for('consultar'))
 
     return render_template("index.html")
-
-# Página 2: Consultar SQL con previsualización y descarga
-# ... (todo el código anterior igual, sin cambios hasta consultar)
 
 @app.route('/consultar', methods=['GET', 'POST'])
 def consultar():
@@ -146,12 +143,10 @@ def consultar():
         tablas = [fila[0] for fila in cursor.fetchall()]
 
         if request.method == 'POST':
-            # Usuario ingresó una consulta personalizada
             consulta_sql = request.form.get("consulta_sql", "").strip()
             if not consulta_sql:
                 raise Exception("La consulta SQL está vacía.")
         else:
-            # Usamos la consulta predefinida si es GET
             consulta_sql = """
             SELECT DISTINCT Re.col_1, Re.col_20, PE.COL_2, PE.COL_20, TD.COL_6 
             FROM tabla_remision RE
@@ -161,7 +156,6 @@ def consultar():
 
         resultado_completo = pd.read_sql_query(consulta_sql, conn)
 
-        # Guardar reporte con timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         nombre_archivo = f"reporte_resultado_{timestamp}.csv"
         ruta_reporte = os.path.join(RESULTADO_FOLDER, nombre_archivo)
@@ -185,8 +179,6 @@ def consultar():
         consulta_actual=consulta_sql or ""
     )
 
-
-# Ruta para descargar el último archivo generado
 @app.route('/descargar')
 def descargar():
     global ULTIMO_REPORTE
