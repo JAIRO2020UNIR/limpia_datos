@@ -139,10 +139,23 @@ def consultar():
         else:
             # Consulta JOIN predefinida de las tres tablas
             consulta_sql = """
-            SELECT DISTINCT Re.col_1, Re.col_20, PE.COL_2, PE.COL_20, TD.COL_6 
+           SELECT DISTINCT 
+            Re.col_1 as re_numero_remision, 
+            Re.col_2 as re_numero_pedido,
+            PE.COL_1 as pe_posicion, 
+            PE.COL_5 as pe_cliente, 
+            pe.col_6 as pe_fecha, 
+            pe.col_8 as pe_fecha_referencia, 
+            pe.col_9 as pe_decripcion_ref,
+            pe.col_10 as pe_unidad, 
+            pe.col_11 as pe_cantidad, 
+            pe.col_12 as pe_costo, 
+            pe.col_13 as pe_estado,
+            TD.COL_6 as de_cantidad, 
+            td.col_19 as td_fecha_vencimiento
             FROM tabla_remision RE
             INNER JOIN tabla_pedidos PE ON (PE.col_4 = RE.col_2)
-            INNER JOIN tabla_detaller TD ON TD.COL_1 = RE.col_6
+            inner join tabla_detaller td on (td.col_1 = re.col_1);
             """
 
         # Ejecutar consulta SQL y guardar resultados
