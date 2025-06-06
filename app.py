@@ -9,11 +9,11 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = "clave-secreta"
 
-# Directorios para cargar, limpiar y guardar resultados
-UPLOAD_FOLDER = 'uploads'
-CLEANED_FOLDER = 'cleaned'
-RESULTADO_FOLDER = 'resultado'
-DB_PATH = 'database.db'
+# Directorios temporales (para Render u otros entornos que solo permiten escritura en /tmp)
+UPLOAD_FOLDER = '/tmp/uploads'
+CLEANED_FOLDER = '/tmp/cleaned'
+RESULTADO_FOLDER = '/tmp/resultado'
+DB_PATH = '/tmp/database.db'
 
 # Crear carpetas si no existen
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -56,7 +56,7 @@ def limpiar_y_guardar(nombre, archivo):
 
     # Convertir el TXT limpio a CSV separando por |
     try:
-        df_iter = pd.read_csv(ruta_limpia_txt, sep='|', header=None, dtype=str, on_bad_lines='skip', engine='python', chunksize=10000)
+        df_iter = pd.read_csv(ruta_limpia_txt, sep='|', header=None, dtype=str, on_bad_lines='skip', engine='python', chunksize=2000)
         with open(ruta_final_csv, 'w', encoding='utf-8') as out:
             for i, chunk in enumerate(df_iter):
                 chunk = chunk.dropna(how='all')
@@ -71,7 +71,7 @@ def limpiar_y_guardar(nombre, archivo):
 def cargar_csv_a_sqlite(nombre_archivo, ruta_csv, conn):
     tabla = nombre_tabla_valido(nombre_archivo)
     try:
-        df_iter = pd.read_csv(ruta_csv, chunksize=10000, dtype=str)
+        df_iter = pd.read_csv(ruta_csv, chunksize=2000, dtype=str)
         for i, chunk in enumerate(df_iter):
             # Normalizar nombres de columnas para evitar errores
             chunk.columns = [re.sub(r'\W+', '_', c).lower() for c in chunk.columns]
@@ -96,13 +96,12 @@ def index():
             flash(f"⚠️ El archivo '{archivo.filename}' no es uno de los requeridos: {', '.join(ARCHIVOS_ESPERADOS)}")
             return redirect(url_for('index'))
 
-        # Limpiar y guardar archivo, convertirlo a CSV limpio
-        ruta_final_csv = limpiar_y_guardar(archivo.filename, archivo)
-
-        conn = sqlite3.connect(DB_PATH)
         try:
+            # Limpiar y guardar archivo, convertirlo a CSV limpio
+            ruta_final_csv = limpiar_y_guardar(archivo.filename, archivo)
+            conn = sqlite3.connect(DB_PATH)
             cargar_csv_a_sqlite(archivo.filename, ruta_final_csv, conn)
-            flash(f"✅ Archivo '{archivo.filename}' limpio y cargado con éxito.")
+            flash(f"✅ Archivo '{archivo.filename}' limpio y cargado con éxito. Puedes cargar el siguiente.")
         except Exception as e:
             flash(str(e))
         finally:
@@ -112,7 +111,7 @@ def index():
         return redirect(url_for('index'))
 
     # Mostrar archivos faltantes al usuario para obligar carga ordenada
-    archivos_cargados = [f.lower().split('.')[0] for f in os.listdir(CLEANED_FOLDER)]
+    archivos_cargados = [f.replace('limpio_', '').split('.')[0].lower() for f in os.listdir(CLEANED_FOLDER) if f.startswith('limpio_')]
     faltan = [a for a in ARCHIVOS_ESPERADOS if a not in archivos_cargados]
     return render_template("index.html", faltan=faltan)
 
@@ -139,23 +138,23 @@ def consultar():
         else:
             # Consulta JOIN predefinida de las tres tablas
             consulta_sql = """
-           SELECT DISTINCT 
-            Re.col_1 as re_numero_remision, 
-            Re.col_2 as re_numero_pedido,
-            PE.COL_1 as pe_posicion, 
-            PE.COL_5 as pe_cliente, 
-            pe.col_6 as pe_fecha, 
-            pe.col_8 as pe_fecha_referencia, 
-            pe.col_9 as pe_decripcion_ref,
-            pe.col_10 as pe_unidad, 
-            pe.col_11 as pe_cantidad, 
-            pe.col_12 as pe_costo, 
-            pe.col_13 as pe_estado,
-            TD.COL_6 as de_cantidad, 
-            td.col_19 as td_fecha_vencimiento
+            SELECT DISTINCT 
+                Re.col_1 as re_numero_remision, 
+                Re.col_2 as re_numero_pedido,
+                PE.COL_1 as pe_posicion, 
+                PE.COL_5 as pe_cliente, 
+                pe.col_6 as pe_fecha, 
+                pe.col_8 as pe_fecha_referencia, 
+                pe.col_9 as pe_decripcion_ref,
+                pe.col_10 as pe_unidad, 
+                pe.col_11 as pe_cantidad, 
+                pe.col_12 as pe_costo, 
+                pe.col_13 as pe_estado,
+                TD.COL_6 as de_cantidad, 
+                td.col_19 as td_fecha_vencimiento
             FROM tabla_remision RE
             INNER JOIN tabla_pedidos PE ON (PE.col_4 = RE.col_2)
-            inner join tabla_detaller td on (td.col_1 = re.col_1);
+            INNER JOIN tabla_detaller TD ON (TD.col_1 = RE.col_1);
             """
 
         # Ejecutar consulta SQL y guardar resultados
